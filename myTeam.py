@@ -14,7 +14,7 @@
 
 from captureAgents import CaptureAgent
 import random, time, util
-from game import Directions
+from game import Directions, Actions
 import game
 import os, pickle
 
@@ -41,7 +41,7 @@ def createTeam(firstIndex, secondIndex, isRed,
     """
 
     # The following line is an example only; feel free to change it.
-    return [eval(first)(firstIndex), eval(second)(secondIndex)]
+    return [eval(first)(firstIndex), FeatureLearningAgent(secondIndex)]
 
 
 ##########
@@ -93,6 +93,8 @@ class DummyAgent(CaptureAgent):
         return random.choice(actions)
 
 
+def isPacman(gameState, agent):
+    return gameState.data
 
 
 class FeatureLearningAgent(CaptureAgent):
@@ -120,12 +122,17 @@ class FeatureLearningAgent(CaptureAgent):
         '''
         Your initialization code goes here, if you need any.
         '''
-        if os.path.exists('weights.txt'):
+        '''if os.path.exists('weights.txt'):
             with open('weights.txt', 'r') as weightsFile:
-                self.weights = pickle.reads(weightsFile)
+                self.weights = pickle.loads(weightsFile.read())
         else:
             with open('weights.txt', 'a') as weightsFile:
-                self.weights = util.Counter()
+                self.weights = util.Counter()'''
+        self.weights = util.Counter()
+        for agent in range(4):
+            print 'STATE', agent, gameState.data.agentStates[agent].isPacman
+            print 'STATE', agent, gameState.data.agentStates[agent].getPosition()
+            print 'STATE', agent, gameState.data.agentStates[agent].numCarrying
 
         self.epsilon = 0.05
         self.gamma = 0.8
@@ -154,22 +161,65 @@ class FeatureLearningAgent(CaptureAgent):
             self.weights[f] += step
 
 
-
-
-
-
     def getFeatures(self, currentState, action):
         currentPos = currentState.getAgentPosition(self.index)
-        foodPositions = filter(
-            lambda x: x,
-            self.getFood(currentState).flatten()
-        )
-        print foodPositions
-        nearestFood = min([self.distancer.getDistance(currentPos, food) for food in foodPositions])
-        score = self.getScore(currentState)
+        foodPositions = self.getFood(currentState).asList()
+
+        walls = currentState.getWalls()
+        food = self.getFood(currentState)
+
+        # compute the location of pacman after he takes the action
+        x, y = currentPos
+        dx, dy = Actions.directionToVector(action)
+        next_x, next_y = int(x + dx), int(y + dy)
         features = util.Counter()
-        features['food'] = nearestFood
+
+        enemyPositions = [currentState.getAgentPosition(i) for i in self.getOpponents(currentState)]
+        visibleEnemies = [enemy for enemy in enemyPositions if enemy is not None]
+        ghosts = []
+        pacs = []
+        for enemy in visibleEnemies:
+            if self.red:
+                if enemy[0] < self.getFood(currentState).width / 2:
+                    pacs.append(enemy)
+                else:
+                    ghosts.append(enemy)
+            else:
+                if enemy[0] > self.getFood(currentState).width / 2:
+                    pacs.append(enemy.getPosition())
+                else:
+                    ghosts.append(enemy.getPosition())
+
+        print 'GHOSTS', ghosts
+
+        try:
+            # count the number of ghosts 1-step away
+            features["#-of-ghosts-1-step-away"] = sum(
+                (next_x, next_y) in Actions.getLegalNeighbors(g, walls) for g in ghosts)
+        except:
+            pass
+
+        # if there is no danger of ghosts then add the food feature
+        if not features["#-of-ghosts-1-step-away"] and food[next_x][next_y]:
+            features["eats-food"] = 1.0
+
+        #dist = closestFood((next_x, next_y), food, walls)
+        nearestFoodDist = min([self.distancer.getDistance(currentPos, food) for food in foodPositions])
+        if nearestFoodDist is not None:
+            # make the distance a number less than one otherwise the update
+            # will diverge wildly
+            features["closest-food"] = float(nearestFoodDist) / (walls.width * walls.height)
+        features.divideAll(10.0)
+
+        #print foodPositions
+
+        score = self.getScore(currentState)
+
+        #features['food'] = nearestFood
         features['score'] = score
+        features['enemy1Dist']
+        features['enemy2Dist']
+        features['teammateDist']
         return features
 
 

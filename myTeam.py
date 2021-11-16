@@ -91,16 +91,15 @@ class TrackingAgent(CaptureAgent):
                     if p[0] < self.getFood(gameState).width / 2:  # initialize beliefs uniformly on red if my team is blue
                         self.beliefs[agent][p] = 1.0
 
-    def updateBeliefs(self, prevState, currentState):
-        #prevDists = prevState.getAgentDistances()
+    def updateBeliefs(self, currentState):
         currentDists = currentState.getAgentDistances()
         for agent in self.getOpponents(currentState):
-            if self.beliefs[agent].totalCount() == 0:
-                self.beliefs[agent] = util.Counter()
-                self.beliefs[agent].incrementAll(self.legalPositions, 1.0)
-                self.beliefs[agent].normalize()
             obs = currentState.getAgentPosition(agent)
             if obs == None:  # if not directly observable
+                if self.beliefs[agent].totalCount() == 0:
+                    self.beliefs[agent] = util.Counter()
+                    self.beliefs[agent].incrementAll(self.legalPositions, 1.0)
+                    self.beliefs[agent].normalize()
                 updatedBeliefs = util.Counter()
                 for p in self.legalPositions:
                     trueDistance = util.manhattanDistance(p, currentState.getAgentPosition(self.index))
@@ -116,7 +115,7 @@ class TrackingAgent(CaptureAgent):
         """
         Picks among actions randomly.
         """
-        self.updateBeliefs(self.getPreviousObservation(), self.getCurrentObservation())
+        self.updateBeliefs(self.getCurrentObservation())
         self.displayDistributionsOverPositions([self.beliefs[agent] for agent in self.getOpponents(gameState)])
         actions = gameState.getLegalActions(self.index)
 

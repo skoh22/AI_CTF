@@ -14,8 +14,9 @@
 
 from captureAgents import CaptureAgent
 import random, time, util
-from game import Directions
+from game import Directions, Actions
 import game
+import math
 
 
 #################
@@ -41,13 +42,16 @@ def createTeam(firstIndex, secondIndex, isRed,
 
     # The following line is an example only; feel free to change it.
     #return [eval(first)(firstIndex), eval(second)(secondIndex)]
-    return [eval(first)(firstIndex), TrackingAgent(secondIndex)]
+    return [trackingAgent(firstIndex), trackingAgent(secondIndex)]
 
 
 ##########
 # Agents #
 ##########
-class TrackingAgent(CaptureAgent):
+
+globalBeliefs = {}
+
+class trackingAgent(CaptureAgent):
     def registerInitialState(self, gameState):
         """
         This method handles the initial setup of the
@@ -77,56 +81,38 @@ class TrackingAgent(CaptureAgent):
             for y in range(self.getFood(gameState).height):
                 if not gameState.hasWall(x, y):
                     self.legalPositions.append((x, y))
-        #self.initializeBeliefs(gameState)
         for agent in self.getOpponents(gameState):
             self.initializeAgentBeliefs(gameState, agent)
+        self.teammate = [i for i in self.getTeam(gameState) if i != self.index][0]
 
     def initializeAgentBeliefs(self, gameState, agent):
         agentBeliefs = util.Counter()
         agentBeliefs[gameState.getInitialAgentPosition(agent)] = 1.0
-        try:
-            self.beliefs[agent] = agentBeliefs
-        except:
-            self.beliefs = {}
-            self.beliefs[agent] = agentBeliefs
+        globalBeliefs[agent] = agentBeliefs
 
     def initializeUniformly(self, gameState, agent):
-        self.beliefs[agent] = util.Counter()
+        globalBeliefs[agent] = util.Counter()
         for p in self.legalPositions:
-            self.beliefs[agent][p] = 1.0
-        self.beliefs[agent].normalize()
-
-    def initializeBeliefs(self, gameState):
-        self.beliefs = {}
-        for agent in self.getOpponents(gameState):
-            self.beliefs[agent] = util.Counter()
-            for p in self.legalPositions:
-                if self.red:
-                    if p[0] > self.getFood(gameState).width / 2:  # initialize beliefs uniformly on blue if my team is red
-                        self.beliefs[agent][p] = 1.0
-                else:
-                    if p[0] < self.getFood(gameState).width / 2:  # initialize beliefs uniformly on red if my team is blue
-                        self.beliefs[agent][p] = 1.0
+            globalBeliefs[agent][p] = 1.0
+        globalBeliefs[agent].normalize()
 
     def updateBeliefs(self, currentState):
         currentDists = currentState.getAgentDistances()
         for agent in self.getOpponents(currentState):
             obs = currentState.getAgentPosition(agent)
             if obs == None:  # if not directly observable
-                if self.beliefs[agent].totalCount() == 0:
+                if globalBeliefs[agent].totalCount() == 0:
                     self.initializeUniformly(currentState, agent)
-                    #self.beliefs[agent] = util.Counter()
-                    #self.beliefs[agent].incrementAll(self.legalPositions, 1.0)
-                    #self.beliefs[agent].normalize()
                 updatedBeliefs = util.Counter()
                 for p in self.legalPositions:
                     trueDistance = util.manhattanDistance(p, currentState.getAgentPosition(self.index))
-                    updatedBeliefs[p] = currentState.getDistanceProb(trueDistance, currentDists[agent]) * self.beliefs[agent][p]
+                    updatedBeliefs[p] = currentState.getDistanceProb(trueDistance, currentDists[agent]) * \
+                                        globalBeliefs[agent][p]
                     updatedBeliefs.normalize()
             else:
                 updatedBeliefs = util.Counter()
                 updatedBeliefs[obs] = 1.0
-            self.beliefs[agent] = updatedBeliefs
+            globalBeliefs[agent] = updatedBeliefs
 
 
     def chooseAction(self, gameState):
@@ -134,14 +120,27 @@ class TrackingAgent(CaptureAgent):
         Picks among actions randomly.
         """
         self.updateBeliefs(self.getCurrentObservation())
-        self.displayDistributionsOverPositions([self.beliefs[agent] for agent in self.getOpponents(gameState)])
+        self.displayDistributionsOverPositions([globalBeliefs[agent] for agent in self.getOpponents(gameState)])
         actions = gameState.getLegalActions(self.index)
 
         '''
         You should change this in your own agent.
         '''
+        #print actions
+        for action in ['South', 'West', 'North', 'East']:
+            if action in actions:
+                currentPos = gameState.getAgentPosition(self.index)
+                dX, dY = Actions.directionToVector(action)
+                print action, dX, dY
+                nextX, nextY = currentPos[0] + math.ceil(dX), currentPos[1] + math.ceil(dY)
+                if not gameState.getWalls()[int(nextX)][int(nextY)]:
+                    return action
+
 
         return random.choice(actions)
+
+
+
 
 
 class DummyAgent(CaptureAgent):

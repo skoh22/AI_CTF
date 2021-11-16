@@ -77,7 +77,24 @@ class TrackingAgent(CaptureAgent):
             for y in range(self.getFood(gameState).height):
                 if not gameState.hasWall(x, y):
                     self.legalPositions.append((x, y))
-        self.initializeBeliefs(gameState)
+        #self.initializeBeliefs(gameState)
+        for agent in self.getOpponents(gameState):
+            self.initializeAgentBeliefs(gameState, agent)
+
+    def initializeAgentBeliefs(self, gameState, agent):
+        agentBeliefs = util.Counter()
+        agentBeliefs[gameState.getInitialAgentPosition(agent)] = 1.0
+        try:
+            self.beliefs[agent] = agentBeliefs
+        except:
+            self.beliefs = {}
+            self.beliefs[agent] = agentBeliefs
+
+    def initializeUniformly(self, gameState, agent):
+        self.beliefs[agent] = util.Counter()
+        for p in self.legalPositions:
+            self.beliefs[agent][p] = 1.0
+        self.beliefs[agent].normalize()
 
     def initializeBeliefs(self, gameState):
         self.beliefs = {}
@@ -97,9 +114,10 @@ class TrackingAgent(CaptureAgent):
             obs = currentState.getAgentPosition(agent)
             if obs == None:  # if not directly observable
                 if self.beliefs[agent].totalCount() == 0:
-                    self.beliefs[agent] = util.Counter()
-                    self.beliefs[agent].incrementAll(self.legalPositions, 1.0)
-                    self.beliefs[agent].normalize()
+                    self.initializeUniformly(currentState, agent)
+                    #self.beliefs[agent] = util.Counter()
+                    #self.beliefs[agent].incrementAll(self.legalPositions, 1.0)
+                    #self.beliefs[agent].normalize()
                 updatedBeliefs = util.Counter()
                 for p in self.legalPositions:
                     trueDistance = util.manhattanDistance(p, currentState.getAgentPosition(self.index))

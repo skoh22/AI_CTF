@@ -98,6 +98,7 @@ class trackingAgent(CaptureAgent):
 
     def updateBeliefs(self, currentState):
         currentDists = currentState.getAgentDistances()
+        currentPos = currentState.getAgentPosition(self.index)
         for agent in self.getOpponents(currentState):
             obs = currentState.getAgentPosition(agent)
             if obs == None:  # if not directly observable
@@ -105,10 +106,10 @@ class trackingAgent(CaptureAgent):
                     self.initializeUniformly(currentState, agent)
                 updatedBeliefs = util.Counter()
                 for p in self.legalPositions:
-                    trueDistance = util.manhattanDistance(p, currentState.getAgentPosition(self.index))
+                    trueDistance = util.manhattanDistance(p, currentPos)
                     updatedBeliefs[p] = currentState.getDistanceProb(trueDistance, currentDists[agent]) * \
                                         globalBeliefs[agent][p]
-                    updatedBeliefs.normalize()
+                updatedBeliefs.normalize()
             else:
                 updatedBeliefs = util.Counter()
                 updatedBeliefs[obs] = 1.0
@@ -127,6 +128,7 @@ class trackingAgent(CaptureAgent):
         You should change this in your own agent.
         '''
         #print actions
+        time.sleep(0.4)
         for action in ['South', 'West', 'North', 'East']:
             if action in actions:
                 currentPos = gameState.getAgentPosition(self.index)

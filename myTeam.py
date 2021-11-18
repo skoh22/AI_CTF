@@ -129,11 +129,6 @@ class FeatureLearningAgent(CaptureAgent):
             with open('weights.txt', 'a') as weightsFile:
                 self.weights = util.Counter()'''
         self.weights = util.Counter()
-        for agent in range(4):
-            print 'STATE', agent, gameState.data.agentStates[agent].isPacman
-            print 'STATE', agent, gameState.data.agentStates[agent].getPosition()
-            print 'STATE', agent, gameState.data.agentStates[agent].numCarrying
-
         self.epsilon = 0.05
         self.gamma = 0.8
         self.alpha = 0.2,
@@ -166,7 +161,12 @@ class FeatureLearningAgent(CaptureAgent):
         foodPositions = self.getFood(currentState).asList()
 
         walls = currentState.getWalls()
-        food = self.getFood(currentState)
+
+        # numFoodAttacking = len(self.getFood(currentState).asList())
+        # distToOwnFood = min([self.distancer.getDistance(currentPos, food) for food in self.getFood(currentState).asList()])
+        # numFoodDefending = len(self.getFoodYouAreDefending(currentState).asList())
+        # distToTeammate = LOG OWN POS IN GLOBALBELIEFS FOR TEAMMATE (Counter w/ only one val == 1)
+        # enemiesWithinView = sum([currentState.getAgentPosition(enemy) for enemy in self.getOpponents(currentState)])
 
         # compute the location of pacman after he takes the action
         x, y = currentPos

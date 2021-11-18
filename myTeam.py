@@ -81,8 +81,10 @@ class trackingAgent(CaptureAgent):
             for y in range(self.getFood(gameState).height):
                 if not gameState.hasWall(x, y):
                     self.legalPositions.append((x, y))
-        for agent in self.getOpponents(gameState):
-            self.initializeAgentBeliefs(gameState, agent)
+        for opponent in self.getOpponents(gameState):
+            self.initializeAgentBeliefs(gameState, opponent)
+        for teammate in self.getTeam(gameState):
+            globalBeliefs[teammate] = util.Counter()
         self.teammate = [i for i in self.getTeam(gameState) if i != self.index][0]
 
     def initializeAgentBeliefs(self, gameState, agent):
@@ -132,7 +134,7 @@ class trackingAgent(CaptureAgent):
         Picks among actions randomly.
         """
         self.updateBeliefs(self.getCurrentObservation())
-        self.displayDistributionsOverPositions([globalBeliefs[agent] for agent in self.getOpponents(gameState)])
+
         actions = gameState.getLegalActions(self.index)
         currentPos = gameState.getAgentPosition(self.index)
         targetIndex = (self.index + 1) % 4  # each of my agents targets one of the other team's agents
@@ -163,6 +165,14 @@ class trackingAgent(CaptureAgent):
             selected = actions[distances.index(min(distances))]
         else:
             selected = actions[distances.index(max(distances))]
+
+        dX, dY = Actions.directionToVector(selected)
+        newPos = (currentPos[0] + math.ceil(dX), currentPos[1] + math.ceil(dY))
+        myNewCounter = util.Counter()
+        myNewCounter[newPos] = 1.0
+        globalBeliefs[self.index] = myNewCounter
+
+        self.displayDistributionsOverPositions([globalBeliefs[agent] for agent in range(gameState.getNumAgents())])
 
         return selected
 

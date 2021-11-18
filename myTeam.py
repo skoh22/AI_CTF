@@ -116,6 +116,17 @@ class trackingAgent(CaptureAgent):
             globalBeliefs[agent] = updatedBeliefs
 
 
+    def isGhost(self, gameState, agent, position):
+        halfLine = gameState.getWalls().width / 2
+        if gameState.isOnRedTeam(agent):
+            if position[0] <= halfLine:
+                return True
+        else:
+            if position[0] > halfLine:
+                return True
+        return False
+
+
     def chooseAction(self, gameState):
         """
         Picks among actions randomly.
@@ -123,23 +134,37 @@ class trackingAgent(CaptureAgent):
         self.updateBeliefs(self.getCurrentObservation())
         self.displayDistributionsOverPositions([globalBeliefs[agent] for agent in self.getOpponents(gameState)])
         actions = gameState.getLegalActions(self.index)
+        currentPos = gameState.getAgentPosition(self.index)
+        targetIndex = (self.index + 1) % 4  # each of my agents targets one of the other team's agents
 
-        '''
-        You should change this in your own agent.
-        '''
-        #print actions
-        time.sleep(0.4)
-        for action in ['South', 'West', 'North', 'East']:
-            if action in actions:
-                currentPos = gameState.getAgentPosition(self.index)
-                dX, dY = Actions.directionToVector(action)
-                print action, dX, dY
-                nextX, nextY = currentPos[0] + math.ceil(dX), currentPos[1] + math.ceil(dY)
-                if not gameState.getWalls()[int(nextX)][int(nextY)]:
-                    return action
+        # assume that target opponent is in one of the spaces we are most confident of
+        bestGuess = 0
+        targetPosGuesses = []
+        for p in globalBeliefs[targetIndex]:
+            if globalBeliefs[targetIndex][p] == bestGuess:
+                targetPosGuesses.append(p)
+            elif globalBeliefs[targetIndex][p] > bestGuess:
+                bestGuess = globalBeliefs[targetIndex][p]
+                targetPosGuesses = [p]
+        target = random.choice(targetPosGuesses)
 
+        # calculate maze distance to target opponent for each possible move
+        distances = []
+        for action in actions:
+            dX, dY = Actions.directionToVector(action)
+            nextX, nextY = currentPos[0] + math.ceil(dX), currentPos[1] + math.ceil(dY)
+            if (nextX, nextY) in self.legalPositions and target in self.legalPositions:
+                distances.append(self.distancer.getDistance((nextX, nextY), target))
+            else:
+                distances.append(999999)
 
-        return random.choice(actions)
+        # if on own side, approach opponent; else avoid opponent
+        if self.isGhost(gameState, self.index, currentPos):
+            selected = actions[distances.index(min(distances))]
+        else:
+            selected = actions[distances.index(max(distances))]
+
+        return selected
 
 
 

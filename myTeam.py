@@ -74,10 +74,10 @@ class FeatureLearningAgent(CaptureAgent):
         '''
         Your initialization code goes here, if you need any.
         '''
-        #self.weights = util.Counter()
-        self.epsilon = 0.8
-        self.gamma = 0.75
-        self.alpha = 0.2
+        self.epsilon = 0.0  # 1.0 = completely random, 0.0 = completely exploitative
+        self.gamma = 0.9
+        self.alpha = 0.4
+        self.featureFactor = 10000
 
         self.legalPositions = []
         for x in range(self.getFood(gameState).width):
@@ -99,13 +99,9 @@ class FeatureLearningAgent(CaptureAgent):
             with open(self.weightsFile, 'w') as file:
                 self.weights = util.Counter()
 
-        print self.weights
-
-        try:
-            print gameState.getAgentState((self.index+1)%4).numCarrying
-            print gameState.getAgentState((self.index+1)%4).configuration
-        except:
-            pass
+        if self.weights.totalCount() == 0:
+            for w in self.weights:
+                self.weights[w] = random.random()
 
 
     def initializeAgentBeliefs(self, gameState, agent):
@@ -195,8 +191,14 @@ class FeatureLearningAgent(CaptureAgent):
         features['numFoodDefending'] = len(self.getFoodYouAreDefending(gameState).asList())
         features['newMazeDistToTeammate'] = self.distancer.getDistance(newPos, globalBeliefs[self.myTeammate].argMax())
         features['newManhattanDistToTeammate'] = util.manhattanDistance(newPos, globalBeliefs[self.myTeammate].argMax())
+        features['myX'] = globalBeliefs[self.index].argMax()[0]
+        features['myY'] = globalBeliefs[self.index].argMax()[1]
+        features['teammateX'] = globalBeliefs[self.index].argMax()[0]
+        features['teammateY'] = globalBeliefs[self.index].argMax()[1]
         features['score'] = self.getScore(nextState)
-        features['scoreChange'] = self.getScore(nextState) - self.getScore(gameState)
+        features['numCarrying'] = gameState.getAgentState(self.index).numCarrying
+        features['teammateNumCarrying'] = gameState.getAgentState(self.myTeammate).numCarrying
+        #features['scoreChange'] = self.getScore(nextState) - self.getScore(gameState)  # included in reward fn
         features['numActions'] = len(nextState.getLegalActions(self.index))
         if nextState.isOver():
             if self.getScore(nextState) > 0:
@@ -221,9 +223,12 @@ class FeatureLearningAgent(CaptureAgent):
             features['deltaToEnemy'+str(enemy)] = features['mazeDistToEnemy'+str(enemy)] - self.distancer.getDistance(currentPos, enemyPos)
             features['enemyIsGhost'+str(enemy)] = self.isGhost(gameState, enemyIndex, enemyPos)
             features['enemyPosConfidence'+str(enemy)] = bestGuess
+            features['enemyX'+str(enemy)] = enemyPos[0]
+            features['enemyY'+str(enemy)] = enemyPos[1]
+            features['enemyCarrying'+str(enemy)] = gameState.getAgentState(enemyIndex).numCarrying
 
         # make the distance a number less than one otherwise the update will diverge wildly
-        features.divideAll(10000)
+        features.divideAll(self.featureFactor)
 
         return features
 
@@ -255,6 +260,21 @@ class FeatureLearningAgent(CaptureAgent):
                     maxActionList.append(action)
             return random.choice(maxActionList)
 
+    def getReward(self, gameState, action):
+        reward = self.getScore(gameState.generateSuccessor(self.index, action)) - self.getScore(gameState)
+        # eats opponent
+        # gets eaten
+        try:
+            for agent in range(gameState.getNumAgents()):
+                for action in gameState.getLegalActions(agent):
+                    if gameState.generateSuccessor(agent, action).isOver():
+                        if agent in self.getTeam(gameState):
+                            reward *= 1000
+                        else:
+                            reward *= -1000
+        except:
+            pass
+        return reward
 
     def chooseAction(self, gameState):
         """
@@ -270,20 +290,9 @@ class FeatureLearningAgent(CaptureAgent):
         else:
             action = self.computeActionFromQValues(gameState)
 
-        reward = self.getScore(gameState.generateSuccessor(self.index, action))
-        try:
-            for agent in range(gameState.getNumAgents()):
-                for move in gameState.getLegalActions(agent):
-                    if gameState.generateSuccessor(agent, move).isOver():
-                        if agent in self.getTeam(gameState):
-                            reward *= 1000
-                        else:
-                            reward *=-1000
-        except:
-            pass
+        reward = self.getReward(gameState, action)
+
         self.updateWeights(gameState, action, gameState.generateSuccessor(self.index, action), reward)
-        #time.sleep(0.3)
-        #print self.weights
 
         currentPos = gameState.getAgentPosition(self.index)
         dX, dY = Actions.directionToVector(action)

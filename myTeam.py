@@ -50,6 +50,7 @@ def createTeam(firstIndex, secondIndex, isRed,
 ##########
 
 globalBeliefs = {}
+markTarget = {}
 
 class trackingAgent(CaptureAgent):
     def registerInitialState(self, gameState):
@@ -86,6 +87,7 @@ class trackingAgent(CaptureAgent):
         for teammate in self.getTeam(gameState):
             globalBeliefs[teammate] = util.Counter()
         self.teammate = [i for i in self.getTeam(gameState) if i != self.index][0]
+        markTarget[self.index] = (self.index + 1) % 4  # each of my agents targets one of the other team's agents
 
     def initializeAgentBeliefs(self, gameState, agent):
         agentBeliefs = util.Counter()
@@ -117,7 +119,6 @@ class trackingAgent(CaptureAgent):
                 updatedBeliefs[obs] = 1.0
             globalBeliefs[agent] = updatedBeliefs
 
-
     def isGhost(self, gameState, agent, position):
         halfLine = gameState.getWalls().width / 2
         if gameState.isOnRedTeam(agent):
@@ -128,40 +129,56 @@ class trackingAgent(CaptureAgent):
                 return True
         return False
 
+    def handoff(self, gameState):
+        # if agents are nearer to teammate's marks than their own, switch marks
+        team = self.getTeam(gameState)
+        matchDistance = 0
+        switchDistance = 0
+        for agent in team:
+            matchDistance += self.distancer.getDistance(self.getPosDistCentroid(agent), self.getMirrorPos(gameState, self.getPosDistCentroid(markTarget[agent])))
+            switchDistance += self.distancer.getDistance(self.getPosDistCentroid(agent), self.getMirrorPos(gameState, self.getPosDistCentroid((markTarget[agent]+2)%4)))
+        if switchDistance < matchDistance-4:
+            for agent in team:
+                markTarget[agent] = (markTarget[agent]+2)%4
 
-    def chooseAction(self, gameState):
-        """
-        Picks among actions randomly.
-        """
-        self.updateBeliefs(self.getCurrentObservation())
-
-        actions = gameState.getLegalActions(self.index)
-        currentPos = gameState.getAgentPosition(self.index)
-        targetIndex = (self.index + 1) % 4  # each of my agents targets one of the other team's agents
-
-        # target is at the "center of mass" of the probabilities
-        bestGuess = 0
-        targetPosGuesses = []
+    def getPosDistCentroid(self, agentIndex):
+        # position at the "center of mass" of the probability distribution (or a legal neighbor)
         xPosSum = 0
         yPosSum = 0
-        for p in globalBeliefs[targetIndex]:
+        for p in globalBeliefs[agentIndex]:
             xVal, yVal = p
-            xPosSum += xVal * globalBeliefs[targetIndex][p]
-            yPosSum += yVal * globalBeliefs[targetIndex][p]
-        targetX = xPosSum / max(globalBeliefs[targetIndex].totalCount(),1)
-        targetY = yPosSum / max(globalBeliefs[targetIndex].totalCount(),1)
+            xPosSum += xVal * globalBeliefs[agentIndex][p]
+            yPosSum += yVal * globalBeliefs[agentIndex][p]
+        x = int(xPosSum / max(globalBeliefs[agentIndex].totalCount(),1))
+        y = int(yPosSum / max(globalBeliefs[agentIndex].totalCount(),1))
+        pos = (x, y)
 
-        #calculating mirror position
-        mirrorPosX = min(max(gameState.getWalls().width-1 - targetX,1),gameState.getWalls().width)
-        mirrorPosY = min(max(gameState.getWalls().height-1 - targetY,1),gameState.getWalls().height)
-        mirrorPos = int(mirrorPosX), int(mirrorPosY)
-        if mirrorPos not in self.legalPositions:  # if not a legal position (e.g. wall), choose a legal neighbor
+        if pos not in self.legalPositions:  # if not a legal position (e.g. wall), choose a legal neighbor
             neighbors = []
             for i in range(-1, 2):
                 for j in range(-1, 2):
-                    if (int(mirrorPosX+i), int(mirrorPosY+j)) in self.legalPositions:
-                        neighbors.append((int(mirrorPosX+i), int(mirrorPosY+j)))
-            mirrorPos = random.choice(neighbors)
+                    if (int(x + i), int(y + j)) in self.legalPositions:
+                        neighbors.append((int(x + i), int(y + j)))
+            pos = random.choice(neighbors)
+        return pos
+
+    def getMirrorPos(self, gameState, position):
+        # get rotationally symmetric reflection of a position
+        x, y = position
+        mirrorPosX = min(max(gameState.getWalls().width - 1 - x, 1), gameState.getWalls().width)
+        mirrorPosY = min(max(gameState.getWalls().height - 1 - y, 1), gameState.getWalls().height)
+        mirrorPos = (int(mirrorPosX), int(mirrorPosY))
+        return mirrorPos
+
+    def chooseAction(self, gameState):
+        self.updateBeliefs(self.getCurrentObservation())
+        self.handoff(gameState)
+
+        actions = gameState.getLegalActions(self.index)
+        currentPos = gameState.getAgentPosition(self.index)
+
+        # get mirrored position of marked opponent
+        mirrorPos = self.getMirrorPos(gameState, self.getPosDistCentroid(markTarget[self.index]))
 
         # calculate maze distance to mirroring opponent for each possible move
         distances = []

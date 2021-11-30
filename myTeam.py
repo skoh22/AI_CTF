@@ -152,9 +152,16 @@ class trackingAgent(CaptureAgent):
         targetY = yPosSum / max(globalBeliefs[targetIndex].totalCount(),1)
 
         #calculating mirror position
-        mirrorPosX = min(max(gameState.getWalls().width + 1 - targetX,1),gameState.getWalls().width)
-        mirrorPosY = min(max(gameState.getWalls().height + 1 - targetY,1),gameState.getWalls().height)
+        mirrorPosX = min(max(gameState.getWalls().width-1 - targetX,1),gameState.getWalls().width)
+        mirrorPosY = min(max(gameState.getWalls().height-1 - targetY,1),gameState.getWalls().height)
         mirrorPos = int(mirrorPosX), int(mirrorPosY)
+        if mirrorPos not in self.legalPositions:  # if not a legal position (e.g. wall), choose a legal neighbor
+            neighbors = []
+            for i in range(-1, 2):
+                for j in range(-1, 2):
+                    if (int(mirrorPosX+i), int(mirrorPosY+j)) in self.legalPositions:
+                        neighbors.append((int(mirrorPosX+i), int(mirrorPosY+j)))
+            mirrorPos = random.choice(neighbors)
 
         # calculate maze distance to mirroring opponent for each possible move
         distances = []

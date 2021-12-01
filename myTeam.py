@@ -137,7 +137,7 @@ class trackingAgent(CaptureAgent):
         for agent in team:
             matchDistance += self.distancer.getDistance(self.getPosDistCentroid(agent), self.getMirrorPos(gameState, self.getPosDistCentroid(markTarget[agent])))
             switchDistance += self.distancer.getDistance(self.getPosDistCentroid(agent), self.getMirrorPos(gameState, self.getPosDistCentroid((markTarget[agent]+2)%4)))
-        if switchDistance < matchDistance-4:
+        if switchDistance < matchDistance:
             for agent in team:
                 markTarget[agent] = (markTarget[agent]+2)%4
 

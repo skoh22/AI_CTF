@@ -170,6 +170,12 @@ class trackingAgent(CaptureAgent):
         mirrorPos = (int(mirrorPosX), int(mirrorPosY))
         return mirrorPos
 
+    def withinFive(self,gameState):
+        if gameState.getAgentPosition((self.index + 1) % 4) is not None or gameState.getAgentPosition((self.index + 3) % 4) is not None:
+            return True
+        else:
+            return False
+
     def chooseAction(self, gameState):
         self.updateBeliefs(self.getCurrentObservation())
         self.handoff(gameState)
@@ -177,34 +183,133 @@ class trackingAgent(CaptureAgent):
         actions = gameState.getLegalActions(self.index)
         currentPos = gameState.getAgentPosition(self.index)
 
-        # get mirrored position of marked opponent
-        mirrorPos = self.getMirrorPos(gameState, self.getPosDistCentroid(markTarget[self.index]))
+        if self.withinFive(gameState):
+            #if we know where the bad guys are, run expectimax
+            actions = gameState.getLegalActions(self.index)  # pacman actions
+            for i in range(len(actions)):
+                action = actions[i]
+                val = self.Expectimax(gameState.generateSuccessor(self.index, action), 0, markTarget[self.index])
+                if i is 0:
+                    bestAction = actions[0]
+                    bestVal = val
+                if val > bestVal:
+                    bestVal = val
+                    bestAction = action
 
-        # calculate maze distance to mirroring opponent for each possible move
-        distances = []
-        for action in actions:
-            dX, dY = Actions.directionToVector(action)
-            nextX, nextY = currentPos[0] + math.ceil(dX), currentPos[1] + math.ceil(dY)
-            if (nextX, nextY) in self.legalPositions:
-                distances.append(self.distancer.getDistance((int(nextX), int(nextY)), mirrorPos))
+            #tell teammate position
+            dX, dY = Actions.directionToVector(bestAction)
+            newPos = (currentPos[0] + math.ceil(dX), currentPos[1] + math.ceil(dY))
+            myNewCounter = util.Counter()
+            myNewCounter[newPos] = 1.0
+            globalBeliefs[self.index] = myNewCounter
+
+            return bestAction
+
+        else: #mirroring
+            # get mirrored position of marked opponent
+            mirrorPos = self.getMirrorPos(gameState, self.getPosDistCentroid(markTarget[self.index]))
+
+            # calculate maze distance to mirroring opponent for each possible move
+            distances = []
+            for action in actions:
+                dX, dY = Actions.directionToVector(action)
+                nextX, nextY = currentPos[0] + math.ceil(dX), currentPos[1] + math.ceil(dY)
+                if (nextX, nextY) in self.legalPositions:
+                    distances.append(self.distancer.getDistance((int(nextX), int(nextY)), mirrorPos))
+                else:
+                    distances.append(999999)
+
+            # choose move that minimizes distance to mirrored position
+            selected = actions[distances.index(min(distances))]
+
+            dX, dY = Actions.directionToVector(selected)
+            newPos = (currentPos[0] + math.ceil(dX), currentPos[1] + math.ceil(dY))
+            myNewCounter = util.Counter()
+            myNewCounter[newPos] = 1.0
+            globalBeliefs[self.index] = myNewCounter
+
+            self.displayDistributionsOverPositions([globalBeliefs[agent] for agent in range(gameState.getNumAgents())])
+            self.debugDraw(mirrorPos, (1,0,1), True)
+            return selected
+
+    def Expectimax(self, gameState, currentDepth, currentAgent):
+        if currentDepth >= 5 or gameState.isOver():
+            return self.evaluationFunction(gameState)
+        if currentAgent is self.index:  # pacman's turn
+            nextActions = gameState.getLegalActions(currentAgent)
+            values = []
+            #setting nextAgent
+            if currentAgent is self.index:
+                nextAgent = markTarget[self.index]
+            elif currentAgent is markTarget[self.index]:
+                nextAgent = markTarget[self.index] + 2
             else:
-                distances.append(999999)
+                nextAgent = self.index
+            nextDepth = currentDepth
+            for i in range(len(nextActions)):
+                nextAction = nextActions[i]
+                values.append(
+                    self.Expectimax(gameState.generateSuccessor(currentAgent, nextAction), nextDepth, nextAgent))
+                if i is 0:
+                    valMax = values[0]
+                elif values[i] > valMax:
+                    valMax = values[i]
+            return valMax
 
-        # choose move that minimizes distance to mirrored position
-        selected = actions[distances.index(min(distances))]
+    def evaluationFunction(self, currentGameState, action):
+        #plan:
+        # reward for eating dots, eating ghosts, returning dots, power pellets
+        # penalty for dying,
 
-        dX, dY = Actions.directionToVector(selected)
-        newPos = (currentPos[0] + math.ceil(dX), currentPos[1] + math.ceil(dY))
-        myNewCounter = util.Counter()
-        myNewCounter[newPos] = 1.0
-        globalBeliefs[self.index] = myNewCounter
+        # Useful information you can extract from a GameState (pacman.py)
+        successorGameState = currentGameState.generatePacmanSuccessor(action)
+        newPos = successorGameState.getPacmanPosition()
+        cur_pos = currentGameState.getPacmanPosition()
+        newFood = successorGameState.getFood()
+        current_ghost_states = currentGameState.getGhostStates()
+        current_scared_times = [ghostState.scaredTimer for ghostState in current_ghost_states]
 
-        self.displayDistributionsOverPositions([globalBeliefs[agent] for agent in range(gameState.getNumAgents())])
-        self.debugDraw(mirrorPos, (1,0,1), True)
-        return selected
+        # base score
+        score = successorGameState.getScore()
 
+        # ghost factors: near is good if scared, bad otherwise
+        ghost_vars = zip(currentGameState.getGhostPositions(), current_scared_times)
+        ghost_proximity_scale = 2
+        for g in ghost_vars:
+            if g[1] > 5:
+                score += 100 / max(0.1, util.manhattanDistance(newPos, g[0]))
+        ghost_factors = [(util.manhattanDistance(newPos, g[0]) * (ghost_proximity_scale * (-1 if g[1] > 0 else 1)))
+                         for g in ghost_vars]
+        score += 25 * math.log(max(1, sum(ghost_factors)), 2)
 
+        # discourage staying in same place
+        if newPos == currentGameState.getPacmanPosition():
+            score -= 10
 
+        # eating is good
+        if newFood[newPos[0]][newPos[1]]:
+            score += 20
+        else:  # otherwise moving towards food is also good
+            new_food_dists = [util.manhattanDistance(newPos, f) for f in newFood.asList()]
+            if len(new_food_dists) == 0:
+                new_food_dists = [0]
+            current_food_dists = [util.manhattanDistance(cur_pos, f) for f in newFood.asList()]
+            if len(current_food_dists) == 0:
+                current_food_dists = [0]
+            score += random.randint(1, 15) * (min(current_food_dists) - min(
+                new_food_dists))  # randomness to avoid getting stuck between comparable states
+
+        # eat capsule if near it anyways
+        if sum([g[1] for g in ghost_vars]) == 0:
+            capsule_vars = zip(currentGameState.getCapsules(),
+                               [util.manhattanDistance(cur_pos, c) for c in currentGameState.getCapsules()])
+
+            for c in capsule_vars:
+                if c[1] < 5:
+                    if util.manhattanDistance(newPos, c[0]) < util.manhattanDistance(cur_pos, c[0]):
+                        score += 50
+
+        return 0
 
 
 class DummyAgent(CaptureAgent):

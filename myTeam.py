@@ -291,12 +291,12 @@ class trackingAgent(CaptureAgent):
         # reward for eating ghosts
         # penalty for dying
         score = 0
-        if self.isGhost(gameState, self.index, positions[self.index]):
+        if self.isGhost(gameState, self.index, positions[self.index]) and gameState.getAgentState(self.index).scaredTimer == 0:
             if positions[self.index] == positions[markTarget[self.index]] or positions[self.index] == positions[(markTarget[self.index]+2)%4]:
-                score += 100
+                score += 1000
         else:
             if positions[self.index] == positions[markTarget[self.index]] or positions[self.index] == positions[(markTarget[self.index]+2)%4]:
-                score -= 100
+                score -= 1000
 
         #print "score: ",score
 

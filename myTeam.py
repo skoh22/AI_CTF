@@ -184,6 +184,7 @@ class trackingAgent(CaptureAgent):
         currentPos = gameState.getAgentPosition(self.index)
 
         if self.withinFive(gameState):
+            print "withinFive "
             #if we know where the bad guys are, run expectimax
             actions = gameState.getLegalActions(self.index)  # pacman actions
             for i in range(len(actions)):
@@ -233,21 +234,19 @@ class trackingAgent(CaptureAgent):
             return selected
 
     def Expectimax(self, gameState, currentDepth, currentAgent):
+        #print "Expectimax", "currentDepth: ", currentDepth, "currentAgent: ", currentAgent
+        #print "self.index: ", self.index
         if currentDepth >= 5 or gameState.isOver():
             return self.evaluationFunction(gameState)
         if currentAgent is self.index:  # pacman's turn
             nextActions = gameState.getLegalActions(currentAgent)
             values = []
             #setting nextAgent
-            if currentAgent is self.index:
-                nextAgent = markTarget[self.index]
-            elif currentAgent is markTarget[self.index]:
-                nextAgent = markTarget[self.index] + 2
-            else:
-                nextAgent = self.index
+            nextAgent = (markTarget[self.index] + 2)%4
             nextDepth = currentDepth
             for i in range(len(nextActions)):
                 nextAction = nextActions[i]
+                successors = [] #problem with generateSuccessor
                 values.append(
                     self.Expectimax(gameState.generateSuccessor(currentAgent, nextAction), nextDepth, nextAgent))
                 if i is 0:
@@ -255,6 +254,26 @@ class trackingAgent(CaptureAgent):
                 elif values[i] > valMax:
                     valMax = values[i]
             return valMax
+        else:
+            print "currentAgent: ", currentAgent
+            nextActions = []
+            posX, posY = self.getPosDistCentroid(currentAgent)
+            for i in range(-1, 2):
+                for j in range(-1, 2):
+                    if (int(posX + i), int(posY + j)) in self.legalPositions and not (i != 0 and j != 0):
+                        nextActions.append(Actions.vectorToDirection((i,j)))
+            values = []
+            arg_expected = 0
+            # updating and tracking currentAgent
+            nextAgent = self.index
+            nextDepth = currentDepth + 1
+            for i in range(len(nextActions)):
+                nextAction = nextActions[i]
+                values.append(self.Expectimax(gameState.generateSuccessor(currentAgent, nextAction), nextDepth, nextAgent))
+            avg = 0
+            for v in values:
+                avg += float(v) / float(len(values))
+            return avg
 
     def evaluationFunction(self, currentGameState, action):
         #plan:
@@ -308,7 +327,8 @@ class trackingAgent(CaptureAgent):
                 if c[1] < 5:
                     if util.manhattanDistance(newPos, c[0]) < util.manhattanDistance(cur_pos, c[0]):
                         score += 50
-
+        print "score: ",score
+        time.sleep(0.5)
         return 0
 
 

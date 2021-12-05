@@ -170,7 +170,7 @@ class trackingAgent(CaptureAgent):
         mirrorPos = (int(mirrorPosX), int(mirrorPosY))
         return mirrorPos
 
-    def withinFive(self,gameState):
+    def withinFive(self, gameState):
         if gameState.getAgentPosition((self.index + 1) % 4) is not None or gameState.getAgentPosition((self.index + 3) % 4) is not None:
             return True
         else:
@@ -188,7 +188,11 @@ class trackingAgent(CaptureAgent):
             actions = gameState.getLegalActions(self.index)  # pacman actions
             for i in range(len(actions)):
                 action = actions[i]
-                val = self.Expectimax(gameState.generateSuccessor(self.index, action), 0, markTarget[self.index])
+                positions = []
+                for j in range(gameState.getNumAgents()):
+                    agentPos = (int(self.getPosDistCentroid(j)[0]), int(self.getPosDistCentroid(j)[1]))
+                    positions.append(agentPos)
+                val = self.Expectimax(gameState.generateSuccessor(self.index, action), positions, 0, markTarget[self.index])
                 if i is 0:
                     bestAction = actions[0]
                     bestVal = val
@@ -228,130 +232,122 @@ class trackingAgent(CaptureAgent):
             myNewCounter[newPos] = 1.0
             globalBeliefs[self.index] = myNewCounter
 
-            self.displayDistributionsOverPositions([globalBeliefs[agent] for agent in range(gameState.getNumAgents())])
-            self.debugDraw(mirrorPos, (1,0,1), True)
+            #self.displayDistributionsOverPositions([globalBeliefs[agent] for agent in range(gameState.getNumAgents())])
+            #self.debugDraw(mirrorPos, (1,0,1), True)
             return selected
 
-    def Expectimax(self, gameState, currentDepth, currentAgent):
-        if currentDepth >= 5 or gameState.isOver():
-            return self.evaluationFunction(gameState)
+    def Expectimax(self, gameState, currentPositions, currentDepth, currentAgent):
+        def updatePositions(oldPositions, agent, action):
+            newPositions = oldPositions
+            newAgentPosition = Actions.getSuccessor(oldPositions[agent], action)
+            newAgentPosition = (int(newAgentPosition[0]), int(newAgentPosition[1]))
+            newPositions[agent] = newAgentPosition
+            return newPositions
+        def getActions(position):
+            x, y = position
+            actions = []
+            for i in range(-1, 2):
+                for j in range(-1, 2):
+                    if (int(x+i), int(y+j)) in self.legalPositions and not (i != 0 and j != 0):
+                        actions.append(Actions.vectorToDirection((i, j)))
+            return actions
+        if currentDepth >= 2 or gameState.isOver():
+            nextActions = getActions(currentPositions[currentAgent])
+            try:
+                return max([self.evaluationFunction(gameState, currentPositions, action) for action in nextActions])
+            except:
+                return 0
         if currentAgent is self.index:  # pacman's turn
-            nextActions = gameState.getLegalActions(currentAgent)
+            nextActions = getActions(currentPositions[currentAgent])
             values = []
-            #setting nextAgent
-            if currentAgent is self.index:
-                nextAgent = markTarget[self.index]
-            elif currentAgent is markTarget[self.index]:
-                nextAgent = markTarget[self.index] + 2
-            else:
-                nextAgent = self.index
+            # setting nextAgent
+            nextAgent = markTarget[self.index]
             nextDepth = currentDepth
             for i in range(len(nextActions)):
                 nextAction = nextActions[i]
-                values.append(
-                    self.Expectimax(gameState.generateSuccessor(currentAgent, nextAction), nextDepth, nextAgent))
+                nextPositions = updatePositions(currentPositions, currentAgent, nextAction)
+                values.append(self.Expectimax(gameState, nextPositions, nextDepth, nextAgent))
                 if i is 0:
                     valMax = values[0]
                 elif values[i] > valMax:
                     valMax = values[i]
             return valMax
+        else:
+            nextActions = getActions(currentPositions[currentAgent])
+            '''actionProbs = util.Counter()
+            for action in nextActions:  # guess relative probabilities of enemies' moves on greedy decisions
+                newPositions = updatePositions(currentPositions, currentAgent, action)
+                newPos = newPositions[currentAgent]
 
-    def evaluationFunction(self, currentGameState, action):
-        #plan:
-        # reward for eating dots, eating ghosts, returning dots, power pellets
-        # penalty for dying,
+                print 'AGENT:', currentAgent
+                print 'CURRENT:', newPositions[currentAgent] in self.legalPositions
+                print 'ME:', self.index
+                print 'SELF:', newPositions[self.index] in self.legalPositions
 
-        # Useful information you can extract from a GameState (pacman.py)
-        successorGameState = currentGameState.generatePacmanSuccessor(action)
-        newPos = successorGameState.getPacmanPosition()
-        cur_pos = currentGameState.getPacmanPosition()
-        newFood = successorGameState.getFood()
-        current_ghost_states = currentGameState.getGhostStates()
-        current_scared_times = [ghostState.scaredTimer for ghostState in current_ghost_states]
+                if gameState.isOnRedTeam(currentAgent):
+                    food = gameState.getRedFood().asList()
+                else:
+                    food = gameState.getBlueFood().asList()
+                try:
+                    oldDistToFood = min([self.distancer.getDistance(newPositions[currentAgent], f) for f in food])
+                    newDistToFood = min([self.distancer.getDistance(newPos, f) for f in food])
+                    actionProbs[action] += 5 if newDistToFood < oldDistToFood else 0
+                except:  # no food left
+                    pass
 
-        # base score
-        score = successorGameState.getScore()
+                self.debugDraw([newPositions[self.index]], (1,1,1))
+                print newPositions[self.index]
+                time.sleep(0.7)
+                assert newPositions[currentAgent] in self.legalPositions
+                assert newPositions[self.index] in self.legalPositions
+                oldDistToMe = self.distancer.getDistance(newPositions[currentAgent], newPositions[self.index])
+                newDistToMe = self.distancer.getDistance(newPos, newPositions[self.index])
+                if self.isGhost(gameState, self.index, newPositions[self.index]) and gameState.getAgentState(self.index).scaredTimer == 0:
+                    if newDistToMe > oldDistToMe:
+                        actionProbs[action] += 10
+                    elif newDistToMe < oldDistToMe:
+                        actionProbs[action] -= 10
+                else:
+                    if newDistToMe > oldDistToMe:
+                        actionProbs[action] -= 10
+                    elif newDistToMe < oldDistToMe:
+                        actionProbs[action] += 10
+            if actionProbs.totalCount() == 0:  # prevent issue if all probs are 0
+                for action in nextActions:
+                    actionProbs[action] = 1
+            actionProbs.normalize()'''
 
-        # ghost factors: near is good if scared, bad otherwise
-        ghost_vars = zip(currentGameState.getGhostPositions(), current_scared_times)
-        ghost_proximity_scale = 2
-        for g in ghost_vars:
-            if g[1] > 5:
-                score += 100 / max(0.1, util.manhattanDistance(newPos, g[0]))
-        ghost_factors = [(util.manhattanDistance(newPos, g[0]) * (ghost_proximity_scale * (-1 if g[1] > 0 else 1)))
-                         for g in ghost_vars]
-        score += 25 * math.log(max(1, sum(ghost_factors)), 2)
+            # updating and tracking currentAgent
+            if currentAgent == markTarget[self.index]:
+                nextAgent = (markTarget[self.index]+2)%4
+                nextDepth = currentDepth
+            else:
+                nextAgent = self.index
+                nextDepth = currentDepth + 1
+            values = []
+            for i in range(len(nextActions)):
+                nextAction = nextActions[i]
+                nextPositions = updatePositions(currentPositions, currentAgent, nextAction)
+                values.append(self.Expectimax(gameState, nextPositions, nextDepth, nextAgent))
+            avg = 0
+            for v in values:
+                #avg += (float(v) *  actionProbs[nextActions[values.index(v)]])/ float(len(values))
+                avg += float(v) / float(len(values))
+            return avg
 
-        # discourage staying in same place
-        if newPos == currentGameState.getPacmanPosition():
-            score -= 10
+    def evaluationFunction(self, gameState, positions, action):
+        # reward for eating ghosts
+        # penalty for dying
+        nextPositions = positions  # problem with generateSuccessor
+        nextPositions[self.index] = Actions.getSuccessor(nextPositions[self.index], action)
+        nextPositions[self.index] = (int(nextPositions[self.index][0]), int(nextPositions[self.index][1]))
+        score = 0
+        if self.isGhost(gameState, self.index, nextPositions[self.index]) and gameState.getAgentState(self.index).scaredTimer == 0:
+            score -= 1000 * (min(self.distancer.getDistance(nextPositions[self.index], nextPositions[markTarget[self.index]]), self.distancer.getDistance(nextPositions[self.index], nextPositions[(markTarget[self.index]+2)%4])))
+            score += 100
+        else:
+            score += 1000 * (min(self.distancer.getDistance(nextPositions[self.index], nextPositions[markTarget[self.index]]), self.distancer.getDistance(
+                nextPositions[self.index], nextPositions[(markTarget[self.index] + 2) % 4])))
+            score -= 100
 
-        # eating is good
-        if newFood[newPos[0]][newPos[1]]:
-            score += 20
-        else:  # otherwise moving towards food is also good
-            new_food_dists = [util.manhattanDistance(newPos, f) for f in newFood.asList()]
-            if len(new_food_dists) == 0:
-                new_food_dists = [0]
-            current_food_dists = [util.manhattanDistance(cur_pos, f) for f in newFood.asList()]
-            if len(current_food_dists) == 0:
-                current_food_dists = [0]
-            score += random.randint(1, 15) * (min(current_food_dists) - min(
-                new_food_dists))  # randomness to avoid getting stuck between comparable states
-
-        # eat capsule if near it anyways
-        if sum([g[1] for g in ghost_vars]) == 0:
-            capsule_vars = zip(currentGameState.getCapsules(),
-                               [util.manhattanDistance(cur_pos, c) for c in currentGameState.getCapsules()])
-
-            for c in capsule_vars:
-                if c[1] < 5:
-                    if util.manhattanDistance(newPos, c[0]) < util.manhattanDistance(cur_pos, c[0]):
-                        score += 50
-
-        return 0
-
-
-class DummyAgent(CaptureAgent):
-    """
-    A Dummy agent to serve as an example of the necessary agent structure.
-    You should look at baselineTeam.py for more details about how to
-    create an agent as this is the bare minimum.
-    """
-
-    def registerInitialState(self, gameState):
-        """
-        This method handles the initial setup of the
-        agent to populate useful fields (such as what team
-        we're on).
-
-        A distanceCalculator instance caches the maze distances
-        between each pair of positions, so your agents can use:
-        self.distancer.getDistance(p1, p2)
-
-        IMPORTANT: This method may run for at most 15 seconds.
-        """
-
-        '''
-        Make sure you do not delete the following line. If you would like to
-        use Manhattan distances instead of maze distances in order to save
-        on initialization time, please take a look at
-        CaptureAgent.registerInitialState in captureAgents.py.
-        '''
-        CaptureAgent.registerInitialState(self, gameState)
-
-        '''
-        Your initialization code goes here, if you need any.
-        '''
-
-    def chooseAction(self, gameState):
-        """
-        Picks among actions randomly.
-        """
-        actions = gameState.getLegalActions(self.index)
-
-        '''
-        You should change this in your own agent.
-        '''
-
-        return random.choice(actions)
+        return score

@@ -237,18 +237,10 @@ class trackingAgent(CaptureAgent):
             return selected
 
     def Expectimax(self, gameState, currentPositions, currentDepth, currentAgent):
-        ct = 0
-        for p1 in currentPositions:
-            for p2 in currentPositions:
-                if p1 == p2:
-                    ct += 1
-        if ct > 4:
-            print 'COLLISION'
         def updatePositions(oldPositions, agent, action):
             newPositions = oldPositions
             newAgentPosition = Actions.getSuccessor(oldPositions[agent], action)
             newAgentPosition = (int(newAgentPosition[0]), int(newAgentPosition[1]))
-            #assert newAgentPosition in self.legalPositions
             newPositions[agent] = newAgentPosition
             return newPositions
         def getActions(position):
@@ -274,8 +266,6 @@ class trackingAgent(CaptureAgent):
             for i in range(len(nextActions)):
                 nextAction = nextActions[i]
                 nextPositions = updatePositions(currentPositions, currentAgent, nextAction)
-                #self.debugDraw([nextPositions[j] for j in range(4)], (1,1,1), True)
-                #time.sleep(0.7)
                 values.append(self.Expectimax(gameState, nextPositions, nextDepth, nextAgent))
                 if i is 0:
                     valMax = values[0]
@@ -284,11 +274,8 @@ class trackingAgent(CaptureAgent):
             return valMax
         else:
             nextActions = getActions(currentPositions[currentAgent])
-            actionProbs = util.Counter()
+            '''actionProbs = util.Counter()
             for action in nextActions:  # guess relative probabilities of enemies' moves on greedy decisions
-                '''newPos = Actions.getSuccessor(currentPositions[currentAgent], action)
-                newPos = (int(newPos[0]), int(newPos[1]))
-                assert newPos in self.legalPositions'''
                 newPositions = updatePositions(currentPositions, currentAgent, action)
                 newPos = newPositions[currentAgent]
 
@@ -328,7 +315,7 @@ class trackingAgent(CaptureAgent):
             if actionProbs.totalCount() == 0:  # prevent issue if all probs are 0
                 for action in nextActions:
                     actionProbs[action] = 1
-            actionProbs.normalize()
+            actionProbs.normalize()'''
 
             # updating and tracking currentAgent
             if currentAgent == markTarget[self.index]:
@@ -341,12 +328,11 @@ class trackingAgent(CaptureAgent):
             for i in range(len(nextActions)):
                 nextAction = nextActions[i]
                 nextPositions = updatePositions(currentPositions, currentAgent, nextAction)
-                #self.debugDraw([nextPositions[j] for j in range(4)], (1, 1, 1), True)
-                #time.sleep(0.7)
                 values.append(self.Expectimax(gameState, nextPositions, nextDepth, nextAgent))
             avg = 0
             for v in values:
-                avg += (float(v) *  actionProbs[nextActions[values.index(v)]])/ float(len(values))
+                #avg += (float(v) *  actionProbs[nextActions[values.index(v)]])/ float(len(values))
+                avg += float(v) / float(len(values))
             return avg
 
     def evaluationFunction(self, gameState, positions, action):

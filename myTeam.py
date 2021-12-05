@@ -170,7 +170,7 @@ class trackingAgent(CaptureAgent):
         mirrorPos = (int(mirrorPosX), int(mirrorPosY))
         return mirrorPos
 
-    def withinFive(self,gameState):
+    def withinFive(self, gameState):
         if gameState.getAgentPosition((self.index + 1) % 4) is not None or gameState.getAgentPosition((self.index + 3) % 4) is not None:
             return True
         else:
@@ -184,14 +184,14 @@ class trackingAgent(CaptureAgent):
         currentPos = gameState.getAgentPosition(self.index)
 
         if self.withinFive(gameState):
-            #print "withinFive "
             #if we know where the bad guys are, run expectimax
             actions = gameState.getLegalActions(self.index)  # pacman actions
             for i in range(len(actions)):
                 action = actions[i]
                 positions = []
                 for j in range(gameState.getNumAgents()):
-                    positions.append(self.getPosDistCentroid(j))
+                    agentPos = (int(self.getPosDistCentroid(j)[0]), int(self.getPosDistCentroid(j)[1]))
+                    positions.append(agentPos)
                 val = self.Expectimax(gameState.generateSuccessor(self.index, action), positions, 0, markTarget[self.index])
                 if i is 0:
                     bestAction = actions[0]
@@ -232,117 +232,136 @@ class trackingAgent(CaptureAgent):
             myNewCounter[newPos] = 1.0
             globalBeliefs[self.index] = myNewCounter
 
-            self.displayDistributionsOverPositions([globalBeliefs[agent] for agent in range(gameState.getNumAgents())])
-            self.debugDraw(mirrorPos, (1,0,1), True)
+            #self.displayDistributionsOverPositions([globalBeliefs[agent] for agent in range(gameState.getNumAgents())])
+            #self.debugDraw(mirrorPos, (1,0,1), True)
             return selected
 
     def Expectimax(self, gameState, currentPositions, currentDepth, currentAgent):
-        #print "Expectimax", "currentDepth: ", currentDepth, "currentAgent: ", currentAgent
-        #print "self.index: ", self.index
-        if currentDepth >= 3 or gameState.isOver():
-            nextActions = []
-            posX, posY = self.getPosDistCentroid(currentAgent)
+        ct = 0
+        for p1 in currentPositions:
+            for p2 in currentPositions:
+                if p1 == p2:
+                    ct += 1
+        if ct > 4:
+            print 'COLLISION'
+        def updatePositions(oldPositions, agent, action):
+            newPositions = oldPositions
+            newAgentPosition = Actions.getSuccessor(oldPositions[agent], action)
+            newAgentPosition = (int(newAgentPosition[0]), int(newAgentPosition[1]))
+            #assert newAgentPosition in self.legalPositions
+            newPositions[agent] = newAgentPosition
+            return newPositions
+        def getActions(position):
+            x, y = position
+            actions = []
             for i in range(-1, 2):
                 for j in range(-1, 2):
-                    if (int(posX + i), int(posY + j)) in self.legalPositions and not (i != 0 and j != 0):
-                        nextActions.append(Actions.vectorToDirection((i, j)))
-            return self.evaluationFunction(gameState, currentPositions,nextActions)
+                    if (int(x+i), int(y+j)) in self.legalPositions and not (i != 0 and j != 0):
+                        actions.append(Actions.vectorToDirection((i, j)))
+            return actions
+        if currentDepth >= 2 or gameState.isOver():
+            nextActions = getActions(currentPositions[currentAgent])
+            try:
+                return max([self.evaluationFunction(gameState, currentPositions, action) for action in nextActions])
+            except:
+                return 0
         if currentAgent is self.index:  # pacman's turn
-            nextActions = gameState.getLegalActions(currentAgent)
+            nextActions = getActions(currentPositions[currentAgent])
             values = []
-            #setting nextAgent
-            nextAgent = (markTarget[self.index] + 2)%4
+            # setting nextAgent
+            nextAgent = markTarget[self.index]
             nextDepth = currentDepth
             for i in range(len(nextActions)):
                 nextAction = nextActions[i]
-                nextPositions = currentPositions #problem with generateSuccessor
-                nextPositions[currentAgent] = Actions.getSuccessor(nextPositions[currentAgent],nextAction)
-                values.append(self.Expectimax(gameState, nextPositions ,nextDepth, nextAgent))
+                nextPositions = updatePositions(currentPositions, currentAgent, nextAction)
+                #self.debugDraw([nextPositions[j] for j in range(4)], (1,1,1), True)
+                #time.sleep(0.7)
+                values.append(self.Expectimax(gameState, nextPositions, nextDepth, nextAgent))
                 if i is 0:
                     valMax = values[0]
                 elif values[i] > valMax:
                     valMax = values[i]
             return valMax
         else:
-            #print "currentAgent: ", currentAgent
-            nextActions = []
-            posX, posY = self.getPosDistCentroid(currentAgent)
-            for i in range(-1, 2):
-                for j in range(-1, 2):
-                    if (int(posX + i), int(posY + j)) in self.legalPositions and not (i != 0 and j != 0):
-                        nextActions.append(Actions.vectorToDirection((i,j)))
-            values = []
-            arg_expected = 0
+            nextActions = getActions(currentPositions[currentAgent])
+            actionProbs = util.Counter()
+            for action in nextActions:  # guess relative probabilities of enemies' moves on greedy decisions
+                '''newPos = Actions.getSuccessor(currentPositions[currentAgent], action)
+                newPos = (int(newPos[0]), int(newPos[1]))
+                assert newPos in self.legalPositions'''
+                newPositions = updatePositions(currentPositions, currentAgent, action)
+                newPos = newPositions[currentAgent]
+
+                print 'AGENT:', currentAgent
+                print 'CURRENT:', newPositions[currentAgent] in self.legalPositions
+                print 'ME:', self.index
+                print 'SELF:', newPositions[self.index] in self.legalPositions
+
+                if gameState.isOnRedTeam(currentAgent):
+                    food = gameState.getRedFood().asList()
+                else:
+                    food = gameState.getBlueFood().asList()
+                try:
+                    oldDistToFood = min([self.distancer.getDistance(newPositions[currentAgent], f) for f in food])
+                    newDistToFood = min([self.distancer.getDistance(newPos, f) for f in food])
+                    actionProbs[action] += 5 if newDistToFood < oldDistToFood else 0
+                except:  # no food left
+                    pass
+
+                self.debugDraw([newPositions[self.index]], (1,1,1))
+                print newPositions[self.index]
+                time.sleep(0.7)
+                assert newPositions[currentAgent] in self.legalPositions
+                assert newPositions[self.index] in self.legalPositions
+                oldDistToMe = self.distancer.getDistance(newPositions[currentAgent], newPositions[self.index])
+                newDistToMe = self.distancer.getDistance(newPos, newPositions[self.index])
+                if self.isGhost(gameState, self.index, newPositions[self.index]) and gameState.getAgentState(self.index).scaredTimer == 0:
+                    if newDistToMe > oldDistToMe:
+                        actionProbs[action] += 10
+                    elif newDistToMe < oldDistToMe:
+                        actionProbs[action] -= 10
+                else:
+                    if newDistToMe > oldDistToMe:
+                        actionProbs[action] -= 10
+                    elif newDistToMe < oldDistToMe:
+                        actionProbs[action] += 10
+            if actionProbs.totalCount() == 0:  # prevent issue if all probs are 0
+                for action in nextActions:
+                    actionProbs[action] = 1
+            actionProbs.normalize()
+
             # updating and tracking currentAgent
-            nextAgent = self.index
-            nextDepth = currentDepth + 1
+            if currentAgent == markTarget[self.index]:
+                nextAgent = (markTarget[self.index]+2)%4
+                nextDepth = currentDepth
+            else:
+                nextAgent = self.index
+                nextDepth = currentDepth + 1
+            values = []
             for i in range(len(nextActions)):
                 nextAction = nextActions[i]
-                nextPositions = currentPositions  # problem with generateSuccessor
-                nextPositions[currentAgent] = Actions.getSuccessor(nextPositions[currentAgent], nextAction)
+                nextPositions = updatePositions(currentPositions, currentAgent, nextAction)
+                #self.debugDraw([nextPositions[j] for j in range(4)], (1, 1, 1), True)
+                #time.sleep(0.7)
                 values.append(self.Expectimax(gameState, nextPositions, nextDepth, nextAgent))
             avg = 0
             for v in values:
-                avg += float(v) / float(len(values))
+                avg += (float(v) *  actionProbs[nextActions[values.index(v)]])/ float(len(values))
             return avg
 
     def evaluationFunction(self, gameState, positions, action):
-        #plan:
         # reward for eating ghosts
         # penalty for dying
+        nextPositions = positions  # problem with generateSuccessor
+        nextPositions[self.index] = Actions.getSuccessor(nextPositions[self.index], action)
+        nextPositions[self.index] = (int(nextPositions[self.index][0]), int(nextPositions[self.index][1]))
         score = 0
-        if self.isGhost(gameState, self.index, positions[self.index]) and gameState.getAgentState(self.index).scaredTimer == 0:
-            if positions[self.index] == positions[markTarget[self.index]] or positions[self.index] == positions[(markTarget[self.index]+2)%4]:
-                score += 1000
+        if self.isGhost(gameState, self.index, nextPositions[self.index]) and gameState.getAgentState(self.index).scaredTimer == 0:
+            score -= 1000 * (min(self.distancer.getDistance(nextPositions[self.index], nextPositions[markTarget[self.index]]), self.distancer.getDistance(nextPositions[self.index], nextPositions[(markTarget[self.index]+2)%4])))
+            score += 100
         else:
-            if positions[self.index] == positions[markTarget[self.index]] or positions[self.index] == positions[(markTarget[self.index]+2)%4]:
-                score -= 1000
-
-        #print "score: ",score
+            score += 1000 * (min(self.distancer.getDistance(nextPositions[self.index], nextPositions[markTarget[self.index]]), self.distancer.getDistance(
+                nextPositions[self.index], nextPositions[(markTarget[self.index] + 2) % 4])))
+            score -= 100
 
         return score
-
-
-class DummyAgent(CaptureAgent):
-    """
-    A Dummy agent to serve as an example of the necessary agent structure.
-    You should look at baselineTeam.py for more details about how to
-    create an agent as this is the bare minimum.
-    """
-
-    def registerInitialState(self, gameState):
-        """
-        This method handles the initial setup of the
-        agent to populate useful fields (such as what team
-        we're on).
-
-        A distanceCalculator instance caches the maze distances
-        between each pair of positions, so your agents can use:
-        self.distancer.getDistance(p1, p2)
-
-        IMPORTANT: This method may run for at most 15 seconds.
-        """
-
-        '''
-        Make sure you do not delete the following line. If you would like to
-        use Manhattan distances instead of maze distances in order to save
-        on initialization time, please take a look at
-        CaptureAgent.registerInitialState in captureAgents.py.
-        '''
-        CaptureAgent.registerInitialState(self, gameState)
-
-        '''
-        Your initialization code goes here, if you need any.
-        '''
-
-    def chooseAction(self, gameState):
-        """
-        Picks among actions randomly.
-        """
-        actions = gameState.getLegalActions(self.index)
-
-        '''
-        You should change this in your own agent.
-        '''
-
-        return random.choice(actions)
